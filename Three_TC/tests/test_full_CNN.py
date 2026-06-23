@@ -15,7 +15,7 @@ from simulation.custom_sampler import WeightedRule, MultiRule
 
 from Three_TC.model.geometry import ThreeD_ToricCodeGeometry
 from Three_TC.model.hamiltonian import create_hamiltonian
-from Three_TC.model.networks import ToricCNN, ToricCNN_full, compute_edges_3D
+from Three_TC.model.networks import ToricCNN, ToricCNN_full, KernelManager3D
 import time
 from Three_TC.utils.wandb_logger import init_run, log_step, finish_run
 
@@ -29,21 +29,14 @@ Ham = create_hamiltonian(
 
 # Firstly, let's define a model 
 
-# Build geometry + helpers
-edges_3D_arr = compute_edges_3D(geo)                   # numpy (3, Lx, Ly, Lz)
-
-# Flax static fields must be hashable, so nest into tuples
-def _to_tuple(x):
-    return tuple(_to_tuple(v) for v in x) if isinstance(x, list) else x
-
-edges_3D_tuple = _to_tuple(edges_3D_arr.tolist())
-plaq_tuple     = tuple(tuple(p) for p in geo.plaq_all)
+# Build geometry-exact convolution stencils + Wilson plaquette membership
+km         = KernelManager3D(geo)
+plaq_tuple = tuple(tuple(p) for p in geo.plaq_all)
 
 model = ToricCNN_full(
+    km=km,
     plaq_all=plaq_tuple,
-    edges_3D=edges_3D_tuple,
-    L=geo.Lx,
-    hidden_inv=8,
+    hidden=8,
 )
 
 # Let's check the identity-wiring to Machine Precision. UPDATE: IT WORKS. ERROR IS 1e-8

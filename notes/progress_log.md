@@ -5,6 +5,57 @@ checkpoints record discrete milestones; the most recent is at the top.
 
 ---
 
+## Checkpoint 2 — Validation harness + fermionic Hamiltonian (both models scorable)
+
+### What's built
+
+- **`Three_TC/validation.py`** — NQS goodness harness scoring ansätze against the
+  Colab L=2 exact reference (expectation-value JSON). Metrics per
+  (model, architecture, config, h_z regime): `eps_E`, `Vscore`, absolute
+  deviations `dA, dB, dMz, dMx` each with MC error + pull, plus cost
+  (`n_params, runtime_s`). Functions: `load_reference`/`find_reference`,
+  `build_model`, `build_sampler`, `_mean_operators`, `nqs_metrics`,
+  `train_one(fermionic=…)`, `run_validation(fermionic=…)`. See `notes/pipeline.md`.
+- **`create_hamiltonian_fermionic`** in `Three_TC/model/hamiltonian.py` — the
+  NetKet decorated-plaquette Hamiltonian (B̃_p = ZZZZ·XX from
+  `fermionic_plaquettes`), for training the fermionic NQS. Bosonic version
+  unchanged.
+- **`colab_exact_diag.py` fermionic mode** — `PARAMS["fermionic"]=True` decorates
+  the plaquettes (self-contained port), emits a JSON tagged `"model":"fermionic"`
+  with `B_p_mean = ⟨B̃_p⟩`.
+- **Notebook** (`2D_TC_phase_diag.ipynb`) — added h_z-derivative plots for
+  ⟨A_v⟩/⟨B_p⟩/⟨σ_z⟩ (2D, rotated-surface, 3D bosonic, 3D fermionic), and a
+  validation section (driver runs both models; table + Pareto + claim panel).
+
+### Key result (verified, corrects the handoff)
+
+`ToricCNN` is **exactly** global-flip symmetric: `log ψ(x)=log ψ(−x)` to 0.0, so
+it is pinned to **⟨σ_z⟩=0** and ⟨A_v⟩=1 at all parameters — the handoff's
+earlier "⟨σ_x⟩=0" was a slip (σ_x is free, ≈0.96). `ToricCNN_full`'s
+non-invariant block breaks this (diff jumps 1e-7→~1 when perturbed). So the
+architecture discriminators under the h_z sweep are **Δ⟨σ_z⟩ and Δ⟨A_v⟩**.
+
+### Verification (cheap proxies; no local 2²⁴ ED)
+
+- Fermionic NetKet Ham: 32 terms at h=0 (8 `XXXXXX` + 24 `ZZZZXX`, weight-6,
+  coef −1); supports match `fermionic_plaquettes` exactly; VMC-compatible.
+- Colab fermionic ED: geometry + decoration indexing identical to the repo;
+  **matvec matches the verified `hamiltonian_linop` to 2e-14** on a random vector.
+- Both architectures train (2-step smoke) for bosonic and fermionic.
+
+### Same ansatz, both models
+
+`ToricCNN`/`ToricCNN_full` serve both models: the decoration changes only the
+plaquette; the vertex star A_v (what the Wilson product enforces) is unchanged.
+
+### Next
+
+Produce the 6 Colab reference JSONs (3 regimes × {bosonic, fermionic}, hx=0.2),
+run `run_validation` for both, read the claim panel. Then scale (L=3: lose the
+exact reference, lean on V-score / stabilizer saturation).
+
+---
+
 ## Checkpoint 1 — Minimal symmetric-only network working at L=2,3,4 PBC, h=0
 
 ### What's built

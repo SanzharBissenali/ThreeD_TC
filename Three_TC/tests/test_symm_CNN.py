@@ -15,7 +15,7 @@ from simulation.custom_sampler import WeightedRule, MultiRule
 
 from Three_TC.model.geometry import ThreeD_ToricCodeGeometry
 from Three_TC.model.hamiltonian import create_hamiltonian
-from Three_TC.model.networks import ToricCNN
+from Three_TC.model.networks import ToricCNN, KernelManager3D
 import time
 from Three_TC.utils.wandb_logger import init_run, log_step, finish_run
 
@@ -30,7 +30,8 @@ Ham = create_hamiltonian(
 # Firstly, let's define a model 
 
 plaq_tuple = tuple(tuple(p) for p in geo.plaq_all)
-model = ToricCNN(plaq_all=plaq_tuple, L=geo.Lx)
+km = KernelManager3D(geo)
+model = ToricCNN(km=km, plaq_all=plaq_tuple)
 
 # Secondly, we have to implement sampling
 

@@ -41,6 +41,15 @@ def init_run(
     tags: Optional[list] = None,
 ):
     """Initialize a wandb run. Returns the run object."""
+    import os
+
+    # The wandb-core subprocess inherits these macOS allocator-debug vars and
+    # spams stderr ("MallocStackLogging: can't turn off ...") which interleaves
+    # with training stdout. Scrub them before wandb.init spawns the subprocess.
+    for _v in ("MallocStackLogging", "MallocStackLoggingNoCompact",
+               "MallocScribble", "MallocPreScribble"):
+        os.environ.pop(_v, None)
+
     import wandb
 
     return wandb.init(
@@ -78,12 +87,24 @@ def log_step(run, step: int, E, vs) -> None:
     )
 
 
-def finish_run(run, vs, Ham, geo, extra: Optional[Dict[str, Any]] = None) -> None:
+def finish_run(run, vs, Ham, geo, extra: Optional[Dict[str, Any]] = None,
+               observables: Optional[Dict[str, Any]] = None) -> None:
     """End-of-run logging: stabilizer expectations + any extras you compute.
 
-    Computes <A_v> and <B_p> over all stabilizers, and logs min/max/mean.
-    This step costs ~1 vs.expect per stabilizer — keep system small or skip.
+    If `observables` is given (e.g. from `validation.nqs_observables`), those are
+    logged directly and the per-stabilizer recompute below is skipped — this is
+    the cheap path used by the training pipeline. Otherwise <A_v>/<B_p> are
+    computed here with ~1 vs.expect per stabilizer (keep the system small).
     """
+    if observables is not None:
+        summary = dict(observables)
+        if extra is not None:
+            summary.update(extra)
+        for k, v in summary.items():
+            run.summary[k] = v
+        run.finish()
+        return
+
     import netket as nk
 
     A_means = []

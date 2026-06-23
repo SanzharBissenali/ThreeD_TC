@@ -36,6 +36,7 @@ PARAMS = {
     "hx": 0.2, "hy": 0.0, "hz": 0.2,
     "J":  1.0,
     "k":  2,            # number of lowest eigenvalues (>=2 for the gap)
+    "fermionic": False, # True -> decorated-plaquette (fermionic) toric code
     "out": None,        # auto-named if None
 }
 
@@ -114,6 +115,32 @@ class ThreeD_ToricCodeGeometry_PBC:
 
 
 # =============================================================================
+# Fermionic decoration (self-contained port of fermionic_decoration.py)
+# =============================================================================
+def fermionic_plaquettes(geo, J=1.0):
+    """Decorated plaquette stabilizers as (z_edges, x_edges, coef) triples.
+
+    B~_p = (prod_{e in dp} sigma^z_e) * sigma^x_{e+} * sigma^x_{e-}, with the two
+    sigma^x on the corner edges at ctr +/- 0.5*(e_a + e_b + e_c).  Identical
+    convention to Three_TC/model/fermionic_decoration.py.
+    """
+    e = np.eye(3)
+    out = []
+    for c in range(3):                                   # plaquette normal axis
+        a, b = [d for d in range(3) if d != c]           # in-plane axes
+        for ix in range(geo.Lx):
+            for iy in range(geo.Ly):
+                for iz in range(geo.Lz):
+                    ctr = np.array([ix, iy, iz], float) + 0.5 * e[a] + 0.5 * e[b]
+                    z_edges = [geo._idx(ctr + s * 0.5 * e[ax])
+                               for ax in (a, b) for s in (+1, -1)]
+                    diag = 0.5 * (e[a] + e[b] + e[c])
+                    x_edges = [geo._idx(ctr + diag), geo._idx(ctr - diag)]
+                    out.append((z_edges, x_edges, -float(J)))
+    return out
+
+
+# =============================================================================
 # Bit manipulation helpers
 # =============================================================================
 def z_string_eigvals(basis, mask, N):
@@ -132,13 +159,19 @@ def z_string_eigvals(basis, mask, N):
 # =============================================================================
 # Hamiltonian as a LinearOperator (no stored matrix)
 # =============================================================================
-def make_hamiltonian_op(geo, hx=0.0, hy=0.0, hz=0.0, J=1.0):
+def make_hamiltonian_op(geo, hx=0.0, hy=0.0, hz=0.0, J=1.0, xz_stabs=None):
     """
     Returns (LinearOperator H, basis array) for the perturbed 3D toric code.
 
     Action on a state ψ is computed on the fly:
         H ψ = diag · ψ + Σ_{X-strings (mask, c)}  c · ψ[basis XOR mask]
                        + Σ_{Y-strings (mask, c)}  c · i^|mask| · (-1)^bits · ψ[basis XOR mask]
+                       + Σ_{XZ-stabs (z,x,c)}     c · (-1)^bits(z) · ψ[basis XOR x]
+
+    xz_stabs: optional list of (z_edges, x_edges, coef) triples (the decorated
+        fermionic plaquettes). When given, they REPLACE the bosonic ∏Z plaquette
+        term; the coef already carries its sign (-J). z- and x-supports are
+        disjoint, so each is a genuine off-diagonal XZ stabilizer.
 
     Memory: O(2^N) for diag and basis arrays. No sparse matrix is stored.
     """
@@ -146,13 +179,15 @@ def make_hamiltonian_op(geo, hx=0.0, hy=0.0, hz=0.0, J=1.0):
     dim = 1 << N
     basis = np.arange(dim, dtype=np.int64)
     dtype = np.complex128 if hy != 0 else np.float64
+    use_xz = xz_stabs is not None and len(xz_stabs) > 0
 
     # ------ Diagonal part: -J · ∏Z (plaquettes) - hz · σ_z (single sites) ------
     diag = np.zeros(dim, dtype=dtype)
-    for p in geo.plaq_all:
-        mask = 0
-        for i in p: mask |= (1 << int(i))
-        diag -= J * z_string_eigvals(basis, mask, N)
+    if not use_xz:                       # bosonic plaquettes only
+        for p in geo.plaq_all:
+            mask = 0
+            for i in p: mask |= (1 << int(i))
+            diag -= J * z_string_eigvals(basis, mask, N)
     if hz != 0:
         for i in range(N):
             diag -= hz * z_string_eigvals(basis, 1 << i, N)
@@ -182,6 +217,18 @@ def make_hamiltonian_op(geo, hx=0.0, hy=0.0, hz=0.0, J=1.0):
         sign  = z_string_eigvals(basis, mask, N).astype(dtype)
         y_sign_cache[mask] = phase * sign  # complex array of shape (dim,)
 
+    # ------ Off-diagonal: XZ stabilizers (decorated fermionic plaquettes) ------
+    # Each is coef · (-1)^popcount(b & z_mask) · ψ[b XOR x_mask]. Cache the sign.
+    xz_terms = []   # list of (x_mask, coef · sign_array)
+    if use_xz:
+        for z_edges, x_edges, coef in xz_stabs:
+            zm = 0
+            for i in z_edges: zm |= (1 << int(i))
+            xm = 0
+            for i in x_edges: xm |= (1 << int(i))
+            sign = z_string_eigvals(basis, zm, N).astype(dtype)
+            xz_terms.append((xm, coef * sign))
+
     def matvec(psi):
         psi = np.asarray(psi).astype(dtype, copy=False)
         out = diag * psi
@@ -189,6 +236,8 @@ def make_hamiltonian_op(geo, hx=0.0, hy=0.0, hz=0.0, J=1.0):
             out = out + c * psi[basis ^ mask]
         for mask, c in y_strings.items():
             out = out + c * y_sign_cache[mask] * psi[basis ^ mask]
+        for xm, csign in xz_terms:
+            out = out + csign * psi[basis ^ xm]
         return out
 
     H = spla.LinearOperator((dim, dim), matvec=matvec, dtype=dtype)
@@ -217,6 +266,12 @@ def expect_y_string(psi, basis, mask, N):
     return float(np.real(val))
 
 
+def expect_xz_string(psi, basis, z_mask, x_mask, N):
+    """⟨ψ| Z(z_mask) X(x_mask) |ψ⟩ for a decorated plaquette (disjoint supports)."""
+    sign = z_string_eigvals(basis, z_mask, N)
+    return float(np.real(np.sum(np.conj(psi) * sign * psi[basis ^ x_mask])))
+
+
 # =============================================================================
 # Main
 # =============================================================================
@@ -231,11 +286,17 @@ def run(params):
     if geo.N > 28:
         raise SystemExit(f"\nN={geo.N} too large for in-memory exact diag.")
 
+    fermionic = params.get("fermionic", False)
+    xz_stabs = fermionic_plaquettes(geo, J=params["J"]) if fermionic else None
+    if fermionic:
+        print(f"  model         = fermionic (decorated plaquettes, |B~_p|={len(xz_stabs)})")
+
     print("\nBuilding Hamiltonian operator (matrix-free) ...")
     t0 = time.time()
     H, basis = make_hamiltonian_op(
         geo,
         hx=params["hx"], hy=params["hy"], hz=params["hz"], J=params["J"],
+        xz_stabs=xz_stabs,
     )
     print(f"  setup took {time.time()-t0:.2f} s   dtype={H.dtype}   shape={H.shape}")
 
@@ -268,17 +329,29 @@ def run(params):
         mask = 0
         for i in v: mask |= (1 << int(i))
         A_v.append(expect_x_string(psi0, basis, mask))
-    B_p = []
-    for p in geo.plaq_all:
-        mask = 0
-        for i in p: mask |= (1 << int(i))
-        B_p.append(expect_z_string(psi0, basis, mask, N))
+    if fermionic:                 # decorated B~_p = Z(z_edges) X(x_edges)
+        B_p = []
+        for z_edges, x_edges, _ in xz_stabs:
+            zm = 0
+            for i in z_edges: zm |= (1 << int(i))
+            xm = 0
+            for i in x_edges: xm |= (1 << int(i))
+            B_p.append(expect_xz_string(psi0, basis, zm, xm, N))
+    else:                         # bosonic B_p = Z(plaquette)
+        B_p = []
+        for p in geo.plaq_all:
+            mask = 0
+            for i in p: mask |= (1 << int(i))
+            B_p.append(expect_z_string(psi0, basis, mask, N))
 
     # ------ Save ------
+    model = "fermionic" if fermionic else "bosonic"
+    tag = "fermionic_" if fermionic else ""
     out_path = params["out"] or (
-        f"exact_diag_L{params['Lx']}_hx{params['hx']}_hy{params['hy']}_hz{params['hz']}.json"
+        f"exact_diag_{tag}L{params['Lx']}_hx{params['hx']}_hy{params['hy']}_hz{params['hz']}.json"
     )
     result = {
+        "model": model,
         "Lx": params["Lx"], "Ly": params["Ly"], "Lz": params["Lz"], "bc": "PBC",
         "N": geo.N, "N_vertices": len(geo.vertex_all),
         "N_plaquettes": len(geo.plaq_all),

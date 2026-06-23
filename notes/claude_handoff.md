@@ -113,17 +113,25 @@ Key facts to remember:
 
 The headline experiment: at h ≠ 0, does `ToricCNN_full` beat `ToricCNN`?
 
-Predicted but not yet measured:
+Predicted, and now CONFIRMED by a direct ψ(x)=ψ(−x) check (2026-06, see
+`Three_TC/validation.py`):
 - **ToricCNN** (sym-only) has hard architectural constraints under perturbation:
-  - `⟨σ_x⟩ = 0` on every qubit (global Z₂ flip symmetry of B_p-only inputs)
-  - `⟨A_v⟩ = 1` on every vertex (architectural)
-- **ToricCNN_full** can break both (because noninv block deviates from identity).
+  - `⟨σ_z⟩ = 0` on every qubit — **exactly**, at all parameters. The B_p-only
+    inputs are even under the global spin flip x → −x (each plaquette has even
+    weight), so `log ψ(x) = log ψ(−x)` to machine precision; any odd-in-x
+    observable (the σ_z magnetization) is therefore pinned to 0.
+  - `⟨A_v⟩ = 1` on every vertex (Wilson 4-product enforces A_v invariance).
+  - NOTE: an earlier draft said `⟨σ_x⟩ = 0`; that was a slip. σ_x is NOT pinned
+    (verified ⟨σ_x⟩ ≈ 0.96 for ToricCNN). The pinned magnetization is σ_z.
+- **ToricCNN_full** can break both: the non-invariant block, once it deviates
+  from identity, breaks ψ(x)=ψ(−x) (verified: the diff jumps from 1e-7 to ~1).
 
-The experiment to run: L=2 PBC with `hx=0.1` (so we have exact diag via
+The experiment to run: L=2 PBC, `hx=0.2`, sweep `h_z` (exact diag via
 `colab_exact_diag.py` for ground truth). Run both architectures, compare:
-1. E vs E_exact
-2. ⟨σ_x⟩ vs exact
-3. ⟨A_v⟩ vs exact
+1. E vs E_exact (relative error; variational ⇒ one-sided)
+2. **⟨σ_z⟩ vs exact** — the key discriminator (ToricCNN floored at 0; under h_z
+   the exact value grows, so the gap is structural, not a training failure)
+3. **⟨A_v⟩ vs exact** — ToricCNN floored at 1; exact drops under h_z
 
 That's the moment "the architecture started doing real physics."
 
@@ -269,3 +277,22 @@ The original Kufel et al. repo is the parent of this directory:
 - `outputs/` — JSON + mpack from previous runs
 
 User has been instructed to read these for the 2D reference but not edit them.
+
+---
+
+## Session addendum — validation harness + fermionic Hamiltonian (2026-06)
+
+The headline comparison run from "What's NOT built yet" item 1 is now **built**
+(though not yet executed end-to-end — it needs the Colab reference JSONs). See
+`notes/pipeline.md` for the full pipeline and `notes/progress_log.md` Checkpoint 2.
+
+- **`Three_TC/validation.py`** scores ansätze against the Colab L=2 exact JSON:
+  `eps_E`, `Vscore`, `Δ⟨A_v/B_p/σ_x/σ_z⟩` (+MC error +pull), cost. Both models via
+  `run_validation(..., fermionic=…)`. Fidelity is out (JSON has no state vector).
+- **`create_hamiltonian_fermionic`** (`Three_TC/model/hamiltonian.py`) is the
+  NetKet decorated-plaquette Hamiltonian — fermionic NQS training is now possible.
+- **`colab_exact_diag.py`** gained `PARAMS["fermionic"]` and a `"model"` JSON tag.
+- The same `ToricCNN`/`ToricCNN_full` ansätze validate **both** models (A_v is
+  unchanged by the decoration).
+- **Correction:** the pinned magnetization is **⟨σ_z⟩**, not ⟨σ_x⟩ (verified
+  `log ψ(x)=log ψ(−x)` exactly). Discriminators: Δ⟨σ_z⟩, Δ⟨A_v⟩. (Fixed above.)
