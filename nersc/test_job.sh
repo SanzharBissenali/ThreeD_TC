@@ -9,9 +9,9 @@
 # EDIT --account below to your repo. Find it with:
 #   sacctmgr -nP show assoc user=$USER format=account
 #SBATCH --job-name=tc-smoketest
-#SBATCH --account=m5340
+#SBATCH --account=m5340_g
 #SBATCH --qos=debug
-#SBATCH --constraint=cpu
+#SBATCH --constraint=gpu
 #SBATCH --nodes=1
 #SBATCH --time=00:05:00
 #SBATCH --output=%x-%j.out
