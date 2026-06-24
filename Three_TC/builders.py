@@ -97,9 +97,9 @@ def build_model(config: Dict[str, Any], geo):
     if arch == "ToricCNN_full":
         return ToricCNN_full(
             km=km, plaq_all=plaq_tuple, hidden=hidden,
-            noninv_channels=config.get("noninv_channels", 1),
-            n_noninv=config.get("n_noninv", 1),
-            inv_hidden=tuple(config.get("inv_hidden", ()) or ()))
+            noninv_channels=config.get("noninv_channels", 4),
+            n_noninv=config.get("n_noninv", 2),
+            inv_hidden=tuple(config.get("inv_hidden", (4, 4)) or ()))
     raise ValueError(f"unknown arch {arch!r} (expected ToricCNN or ToricCNN_full)")
 
 

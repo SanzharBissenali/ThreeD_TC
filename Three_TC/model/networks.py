@@ -384,9 +384,9 @@ class ToricCNN_full(nn.Module):
     km: Any
     plaq_all: tuple
     hidden: int = 8
-    noninv_channels: int = 1
-    n_noninv: int = 1
-    inv_hidden: tuple = ()
+    noninv_channels: int = 4
+    n_noninv: int = 2
+    inv_hidden: tuple = (4, 4)
     dtype: Any = jnp.float64
 
     @nn.compact

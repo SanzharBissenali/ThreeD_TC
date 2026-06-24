@@ -100,8 +100,13 @@ def train(config: Dict[str, Any]) -> Dict[str, Any]:
     os.makedirs(cfg["out_dir"], exist_ok=True)
 
     geo, hi, Ham, vs, xz_stabs = build_state(cfg)
-    print(f"[train] {name}: N={geo.N}  n_params={vs.n_parameters}  model={cfg['model']}"
-          f"  n_chains={cfg['n_chains']}"
+    # Resolved run metadata -> W&B config (and saved JSON): the param count and the
+    # ACTUAL sampler sweep size. build_sampler defaults n_sweeps to geo.N*2 when it
+    # is unset, so without this the raw config would log n_sweeps=None.
+    cfg["n_params"] = int(vs.n_parameters)
+    cfg["n_sweeps"] = int(vs.sampler.sweep_size)
+    print(f"[train] {name}: N={geo.N}  n_params={cfg['n_params']}  model={cfg['model']}"
+          f"  n_chains={cfg['n_chains']}  n_sweeps={cfg['n_sweeps']}"
           + (f"  E_exact={exact_E0}" if exact_E0 is not None else ""))
 
     run = None
