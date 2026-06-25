@@ -5,6 +5,56 @@ checkpoints record discrete milestones; the most recent is at the top.
 
 ---
 
+## Checkpoint 3 — MCMC acceptance pinned down as phase-dependent; lr×diag_shift sweep launched
+
+### The acceptance puzzle, resolved
+
+Training + MCMC sampling are **stable in the topological phase but collapse in the
+trivial phase** — and this is **correct physics, not a bug**. The sampler is
+`WeightedRule(LocalRule 75%, MultiRule star-flip 25%)`; star-cluster moves are
+"free" (always accepted) only when ψ is A_v-symmetric. Only `h_z` (σ_z) breaks
+A_v conservation; `h_x` (σ_x) commutes with A_v.
+
+- `h_z=0`: acceptance pins at **0.25** (= MultiRule weight).
+- Topological side (`h_z≈0.1–0.2`, transition ≈0.3): mild A_v breaking → **~0.2**,
+  stable `R_hat≈1`. Healthy.
+- Deep trivial (`h_z=0.553`, `easy` preset): true state strongly polarized → A_v
+  genuinely broken *and* distribution sharply peaked → both cluster and local
+  moves reject → **~0.01**. Expected, not a stall to fix.
+
+### How it was diagnosed (de-confounded)
+
+1. Reproduced the pre-GeoConv3D run (`VanillaWilsonCNN`, plain grid conv + Wilson
+   sandwich, added to `networks.py`): held 0.2 → matched the old good run.
+2. **De-confound run — GeoConv3D at the small `[1]/[8,1]` shape**: also held 0.2.
+   → **the GeoConv3D kernel is exonerated**; it was never the cause.
+3. Compared the one stalling run (`hz_preset easy`, `n_noninv=2`, 1024 chains)
+   vs a stable one (`hz=0.2`, `n_noninv=1`, 32 chains) — same code (commit
+   `3180500`), only config differed. Driver: **`h_z` (phase)**, secondary:
+   noninv depth; the `1024 chains / 8 samples-per-chain` also made that run's
+   `R_hat`/`tau_corr` unreliable.
+
+### Rules adopted
+
+- **Judge runs by `R_hat≈1`, stable `tau_corr`, converged energy — NOT by
+  `mcmc_acceptance`** (it is phase-dependent and drops legitimately toward the
+  trivial phase).
+- Keep ≥ a few hundred samples/chain (16–64 chains at L=2).
+- Let `h_z` drive symmetry breaking; keep `n_noninv` moderate (1–2).
+- New CLI knobs added: `VanillaCNN`, `VanillaWilsonCNN` (`--noninv_random`),
+  `--kernel_size`, `--vanilla_depth`. Full flag reference: `notes/training_cli.md`.
+
+### In flight
+
+`hz_preset=hard` (h_z=0.118, deep topological, small gap Δ≈0.062) **lr×diag_shift
+sweep** (3×3, both inv & noninv = 2 layers, `n_iter=300`), split across two Colab
+notebooks under `--wandb_group hard_lr_ds_sweep`:
+`dt ∈ {5e-3, 1e-2, 2e-2}` × `diag_shift ∈ {1e-3, 3e-3, 1e-2}`, `lr_min = dt/10`.
+Goal: the (lr, diag_shift) pair with **lowest `delta`** (% from exact E₀=−32.297),
+gated on `R_hat≈1`. Expectation: best near mid-grid (`dt≈1e-2`, `diag_shift≈3e-3`).
+
+---
+
 ## Checkpoint 2 — Validation harness + fermionic Hamiltonian (both models scorable)
 
 ### What's built

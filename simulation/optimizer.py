@@ -62,9 +62,14 @@ def run_tdvp(
         # Update parameters
         vstate.parameters = jax.tree.map(lambda x, y: x + dt * y, vstate.parameters, dtheta)
         
+        # Per-iteration MCMC acceptance rate (counters reset each sample() call)
+        n_acc = float(vstate.sampler_state.n_accepted)
+        n_tot = float(vstate.sampler_state.n_steps)
+        mcmc_acc = n_acc / n_tot if n_tot > 0 else float('nan')
+
         # Save optimization data
         update_data(filename, [
-            "iters", "energy", "energy_eom", "energy_var", "tau_corr", 
+            "iters", "energy", "energy_eom", "energy_var", "tau_corr",
             "Rsplit", "Vscore", "MCMC_accepted", "MCMC_total"
         ], [
             t, E.mean, E.error_of_mean, E.variance, E.tau_corr,
@@ -82,8 +87,11 @@ def run_tdvp(
             for callback in callbacks:
                 callback(vstate, step, t, config)
         
-        # Update progress bar description
-        loop.set_description(f"Energy: {E.mean:.6f} ± {E.error_of_mean:.6f}")
+        # Update progress bar description (include live MCMC acceptance rate)
+        loop.set_description(
+            f"E: {E.mean:.6f} ± {E.error_of_mean:.6f} | "
+            f"R_hat: {float(E.R_hat):.3f} | mcmc_acc: {mcmc_acc:.3f}"
+        )
         
         # Update time
         t = t + dt
