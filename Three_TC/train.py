@@ -208,7 +208,8 @@ def _parse_args() -> Dict[str, Any]:
                         "--hz_preset)")
     # Architecture
     p.add_argument("--arch",
-                   choices=["ToricCNN", "ToricCNN_full", "VanillaCNN", "VanillaWilsonCNN"],
+                   choices=["ToricCNN", "ToricCNN_full", "GeoCNN",
+                            "VanillaCNN", "VanillaWilsonCNN"],
                    default=D)
     p.add_argument("--hidden", type=int, default=D)
     p.add_argument("--vanilla_depth", type=int, default=D,
@@ -224,6 +225,9 @@ def _parse_args() -> Dict[str, Any]:
                    help="ToricCNN_full: number of non-invariant blocks before Wilson")
     p.add_argument("--inv_hidden", type=int, nargs="*", default=D,
                    help="ToricCNN_full: post-Wilson hidden widths, e.g. --inv_hidden 16 16")
+    p.add_argument("--cnn_hidden", type=int, nargs="*", default=D,
+                   help="GeoCNN: edge-conv channel widths (no Wilson), e.g. "
+                        "--cnn_hidden 8 8 8; a width-1 readout is appended")
     # Training
     p.add_argument("--n_iter", type=int, default=D)
     p.add_argument("--dt", type=float, default=D, help="(initial) learning rate")

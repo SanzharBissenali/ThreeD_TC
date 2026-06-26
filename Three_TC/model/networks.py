@@ -42,6 +42,9 @@ Components
     ToricCNN_full        — CNN_noninvariant → Wilson → CNN_invariant ×2 → mean
                            At step 0 the non-invariant block is identity, so the
                            full model reduces exactly to ToricCNN.
+    GeoCNN               — stacked GeoConv3D edge convs → mean, NO Wilson. Same
+                           kernel as above but not A_v-invariant; the benchmark
+                           that isolates what the Wilson invariance buys.
 
 Because GeoConv3D consumes and produces features in flat qubit-index / plaquette
 order, the full model no longer needs the old edges_3D gather + argsort scatter:
@@ -554,3 +557,34 @@ class ToricCNN_full(nn.Module):
             g = CNN_invariant_3D(self.km, w, self.dtype)(g)
         g = CNN_invariant_3D(self.km, 1, self.dtype)(g)
         return jnp.mean(g, axis=(-2, -1))                              # (...,) log ψ
+
+
+class GeoCNN(nn.Module):
+    """Geometry-exact CNN baseline — KernelManager3D convs WITHOUT the Wilson
+    4-product, so it is translation-equivariant but NOT A_v-invariant.
+
+    Same kernel (GeoConv3D, same stencil/radius) and output reduction as
+    ToricCNN_full, but the spins flow straight through stacked *edge* convs to a
+    width-1 readout + mean — there is no flux nonlinearity enforcing vertex-
+    operator invariance. This isolates the value of the *invariance* (not the
+    kernel): A/B it against ToricCNN_full at matched depth / parameter count to
+    see how much the Wilson symmetry, rather than the geometry-exact gather, is
+    buying.
+
+    `hidden` are the edge-conv channel widths; a final width-1 edge conv (+ mean
+    over channels & sites) gives a real log ψ (h_y = 0 sector). Random init,
+    ELU — like CNN_invariant_3D, but on raw edge features.
+    """
+    km: Any
+    hidden: tuple = (4, 4, 4)
+    dtype: Any = jnp.float64
+
+    @nn.compact
+    def __call__(self, x):                      # x: (..., N) spins ±1
+        h = x[..., None, :].astype(self.dtype)                         # (..., 1, N)
+        for w in (self.hidden or (4,)):
+            h = GeoConv3D(self.km, "edge", w, activation=nn.elu,
+                          identity_init=False, dtype=self.dtype)(h)
+        h = GeoConv3D(self.km, "edge", 1, activation=nn.elu,
+                      identity_init=False, dtype=self.dtype)(h)
+        return jnp.mean(h, axis=(-2, -1))                              # (...,) log ψ

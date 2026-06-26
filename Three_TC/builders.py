@@ -13,7 +13,8 @@ The optimization loop (`run_loop`) also lives here, shared by both front-ends.
 Config keys consumed (all optional except where noted; see DEFAULTS):
     System      : L (req), bc, model ∈ {"bosonic","fermionic"}
     Hamiltonian : hx, hy, hz, J
-    Architecture: arch ∈ {"ToricCNN","ToricCNN_full"}, hidden
+    Architecture: arch ∈ {"ToricCNN","ToricCNN_full","GeoCNN"}, hidden,
+                  cnn_hidden (GeoCNN edge-conv widths)
     Sampling    : n_samples, n_chains, n_discard, chunk_size, n_sweeps, seed
 """
 from __future__ import annotations
@@ -30,7 +31,7 @@ from Three_TC.model.hamiltonian import (
     create_hamiltonian, create_hamiltonian_fermionic)
 from Three_TC.model.fermionic_decoration import fermionic_plaquettes
 from Three_TC.model.networks import (
-    ToricCNN, ToricCNN_full, VanillaCNN, VanillaWilsonCNN,
+    ToricCNN, ToricCNN_full, GeoCNN, VanillaCNN, VanillaWilsonCNN,
     KernelManager3D, compute_edges_3D)
 
 
@@ -124,7 +125,12 @@ def build_model(config: Dict[str, Any], geo):
             noninv_channels=config.get("noninv_channels", 4),
             n_noninv=config.get("n_noninv", 2),
             inv_hidden=tuple(config.get("inv_hidden", (4, 4)) or ()))
-    raise ValueError(f"unknown arch {arch!r} (expected ToricCNN or ToricCNN_full)")
+    if arch == "GeoCNN":
+        # geometry-exact CNN, NO Wilson 4-product: same kernel, not A_v-invariant
+        return GeoCNN(km=km,
+                      hidden=tuple(config.get("cnn_hidden", (4, 4, 4)) or ()))
+    raise ValueError(
+        f"unknown arch {arch!r} (expected ToricCNN, ToricCNN_full or GeoCNN)")
 
 
 def build_sampler(config: Dict[str, Any], hi, geo):
